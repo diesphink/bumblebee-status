@@ -12,6 +12,7 @@ Parameters:
     * gcalendar.date_format: Format date output. Defaults to "%d.%m.%y".
     * gcalendar.credentials_path: Path to credentials.json. Defaults to "~/".
     * gcalendar.locale: locale to use rather than the system default.
+    * gcalendar.calendars: Comma separated list of calendar names that will be shown. Defaults to show all.
 
 Requires these pip packages:
    * google-api-python-client 
@@ -61,6 +62,10 @@ class Module(core.module.Module):
         except Exception:
             locale.setlocale(locale.LC_TIME, ("en_US", "UTF-8"))
 
+        self.__calendars = self.parameter("calendars", None)
+        if self.__calendars:
+            self.__calendars = [x.strip() for x in self.__calendars.split(',')]
+
     def first_event(self, widget):
         SCOPES = ["https://www.googleapis.com/auth/calendar.readonly"]
 
@@ -99,6 +104,10 @@ class Module(core.module.Module):
             calendar_list = service.calendarList().list().execute()
             event_list = []
             for calendar_list_entry in calendar_list["items"]:
+                if self.__calendars:
+                    if calendar_list_entry['summary'] not in self.__calendars:
+                        continue
+
                 calendar_id = calendar_list_entry["id"]
                 events_result = (
                     service.events()

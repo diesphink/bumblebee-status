@@ -15,7 +15,7 @@ Parameters:
     * gcalendar.calendars: Comma separated list of calendar names that will be shown. Defaults to show all.
 
 Requires these pip packages:
-   * google-api-python-client 
+   * google-api-python-client >= 1.8.0
    * google-auth-httplib2 
    * google-auth-oauthlib
 """
@@ -31,7 +31,6 @@ import core.decorators
 
 import datetime
 import os.path
-import pickle
 import locale
 
 from google.auth.transport.requests import Request
@@ -77,8 +76,7 @@ class Module(core.module.Module):
         # created automatically when the authorization flow completes for the first
         # time.
         if os.path.exists(self.__token):
-            with open(self.__token, 'rb') as token:
-                creds = pickle.load(token)
+            creds = Credentials.from_authorized_user_file(self.__token, SCOPES)
         # If there are no (valid) credentials available, let the user log in.
         if not creds or not creds.valid:
             if creds and creds.expired and creds.refresh_token:
@@ -89,8 +87,8 @@ class Module(core.module.Module):
                 )
                 creds = flow.run_local_server(port=0)
             # Save the credentials for the next run
-            with open(self.__token, 'wb') as token:
-                pickle.dump(creds, token)
+            with open(self.__token, "w") as token:
+                token.write(creds.to_json())
 
         try:
             service = build("calendar", "v3", credentials=creds)

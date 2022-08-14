@@ -258,6 +258,17 @@
       "prefix": ""
     }
   },
+  "bluetooth-icons": {
+    "ON": {
+      "prefix": ""
+    },
+    "warning": {
+      "prefix": ""
+    },
+    "critical": {
+      "prefix": ""
+    }
+  },
   "battery-upower": {
     "charged": {
       "prefix": "",

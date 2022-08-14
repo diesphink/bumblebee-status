@@ -32,6 +32,7 @@ class Module(core.module.Module):
             'audio-headset': '',
             'input-mouse': '',
             'keyboard': '',
+            'input-keyboard': '',
             'unknown': ''
         }
 

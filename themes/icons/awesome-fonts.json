@@ -717,5 +717,8 @@
   },
   "thunderbird": {
     "prefix": ""
+  },
+  "gcalendar": {
+    "prefix": ""
   }
 }

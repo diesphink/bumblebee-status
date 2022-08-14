@@ -37,13 +37,12 @@ from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
-from googleapiclient.errors import HttpError
 
 
 class Module(core.module.Module):
     @core.decorators.every(minutes=15)
     def __init__(self, config, theme):
-        super().__init__(config, theme, core.widget.Widget(self.first_event))
+        super().__init__(config, theme, core.widget.Widget(self.status))
         self.__time_format = self.parameter("time_format", "%H:%M")
         self.__date_format = self.parameter("date_format", "%d.%m.%y")
         self.__credentials_path = os.path.expanduser(
@@ -64,8 +63,36 @@ class Module(core.module.Module):
         self.__calendars = self.parameter("calendars", None)
         if self.__calendars:
             self.__calendars = [x.strip() for x in self.__calendars.split(',')]
+        self._events = []
+        self._expanded = False
 
-    def first_event(self, widget):
+        core.input.register(self, button=core.input.LEFT_MOUSE, cmd=self.toggle, wait=True)
+
+
+    def toggle(self, _):
+        self._expanded = not self._expanded
+        self.update()
+
+    def status(self, widget):
+        """Get status."""
+        if self._expanded:
+            return "  ".join(self._events)
+        elif len(self._events) > 1:
+            return f"{self._events[0]} (+{len(self._events) - 1})"
+        elif len(self._events) == 1:
+            return self._events[0]
+        else:
+            return ""
+        return f'{self._status} ({self._expanded})'
+
+    def update(self):
+        """Update current state."""
+        self._events = self.get_events()
+
+    def hidden(self):
+        return self._events == []
+
+    def get_events(self):
         SCOPES = ["https://www.googleapis.com/auth/calendar.readonly"]
 
         """Shows basic usage of the Google Calendar API.
@@ -90,77 +117,82 @@ class Module(core.module.Module):
             with open(self.__token, "w") as token:
                 token.write(creds.to_json())
 
-        try:
-            service = build("calendar", "v3", credentials=creds)
+        # try:
+        service = build("calendar", "v3", credentials=creds)
 
-            # Call the Calendar API
-            now = datetime.datetime.utcnow().isoformat() + "Z"  # 'Z' indicates UTC time
-            end = (
-                datetime.datetime.utcnow() + datetime.timedelta(days=7)
-            ).isoformat() + "Z"  # 'Z' indicates UTC time
-            # Get all calendars
-            calendar_list = service.calendarList().list().execute()
-            event_list = []
-            for calendar_list_entry in calendar_list["items"]:
-                if self.__calendars:
-                    if calendar_list_entry['summary'] not in self.__calendars:
-                        continue
+        # Call the Calendar API
+        now = datetime.datetime.utcnow().isoformat() + "Z"  # 'Z' indicates UTC time
+        end = (
+            datetime.datetime.utcnow() + datetime.timedelta(days=7)
+        ).isoformat() + "Z"  # 'Z' indicates UTC time
+        # Get all calendars
+        calendar_list = service.calendarList().list().execute()
+        event_list = []
+        for calendar_list_entry in calendar_list["items"]:
+            if self.__calendars:
+                if calendar_list_entry['summary'] not in self.__calendars:
+                    continue
 
-                calendar_id = calendar_list_entry["id"]
-                events_result = (
-                    service.events()
-                    .list(
-                        calendarId=calendar_id,
-                        timeMin=now,
-                        timeMax=end,
-                        singleEvents=True,
-                        orderBy="startTime",
-                    )
-                    .execute()
+            calendar_id = calendar_list_entry["id"]
+            events_result = (
+                service.events()
+                .list(
+                    calendarId=calendar_id,
+                    timeMin=now,
+                    timeMax=end,
+                    singleEvents=True,
+                    orderBy="startTime",
                 )
-                events = events_result.get("items", [])
+                .execute()
+            )
+            events = events_result.get("items", [])
 
-                for event in events:
-                    start = dtparse(
-                        event["start"].get("dateTime", event["start"].get("date"))
+            for event in events:
+                start = dtparse(
+                    event["start"].get("dateTime", event["start"].get("date"))
+                )
+                # Only add to list if not an whole day event
+                if start.tzinfo:
+                    event_list.append(
+                        {
+                            "date": start,
+                            "summary": event["summary"],
+                            "type": event["eventType"],
+                        }
                     )
-                    # Only add to list if not an whole day event
-                    if start.tzinfo:
-                        event_list.append(
-                            {
-                                "date": start,
-                                "summary": event["summary"],
-                                "type": event["eventType"],
-                            }
-                        )
-            sorted_list = sorted(event_list, key=lambda t: t["date"])
+        sorted_list = sorted(event_list, key=lambda t: t["date"])
 
-            for gevent in sorted_list:
-                if gevent["date"] >= datetime.datetime.now(datetime.timezone.utc):
-                    if gevent["date"].date() == datetime.datetime.utcnow().date():
-                        return str(
-                            "%s %s"
-                            % (
-                                gevent["date"]
-                                .astimezone()
-                                .strftime(f"{self.__time_format}"),
-                                gevent["summary"],
-                            )
+        smaller_date = None
+        events = []
+        for gevent in sorted_list:
+            if (gevent["date"] >= datetime.datetime.now(datetime.timezone.utc) 
+                and (smaller_date is None  or smaller_date == gevent['date'].date())):
+                if gevent["date"].date() == datetime.datetime.utcnow().date() or smaller_date is not None:
+                    events.append(str(
+                        "%s %s"
+                        % (
+                            gevent["date"]
+                            .astimezone()
+                            .strftime(f"{self.__time_format}"),
+                            gevent["summary"],
                         )
-                    else:
-                        return str(
-                            "%s %s"
-                            % (
-                                gevent["date"]
-                                .astimezone()
-                                .strftime(f"{self.__date_format} {self.__time_format}"),
-                                gevent["summary"],
-                            )
+                    ))
+                else:
+                    events.append(str(
+                        "%s %s"
+                        % (
+                            gevent["date"]
+                            .astimezone()
+                            .strftime(f"{self.__date_format} {self.__time_format}"),
+                            gevent["summary"],
                         )
-            return "No upcoming events found."
+                    ))
+                smaller_date = gevent['date'].date()
 
-        except:
-            return None
+        return events
+
+        # except:
+        #     return None
 
 
 # vim: tabstop=8 expandtab shiftwidth=4 softtabstop=4

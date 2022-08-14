@@ -129,7 +129,7 @@ class Module(core.module.Module):
     def hidden(self):
         return self._status is None
 
-    @core.decorators.scrollable
+    # @core.decorators.scrollable
     def description(self, widget):
         return string.Formatter().vformat(self._fmt, (), self._tags)
 
